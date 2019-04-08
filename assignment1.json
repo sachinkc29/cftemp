@@ -1,0 +1,1139 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "A CloudFormation template with new vpc using chef to install WordPress",
+    "Parameters": {
+        "InstanceType": {
+            "Description": "WebServer EC2 instance type",
+            "Type": "String",
+            "Default": "t2.micro",
+            "AllowedValues": [
+                "t1.micro",
+                "t2.nano",
+                "t2.micro",
+                "t2.small",
+                "t2.medium",
+                "t2.large"
+            ],
+            "ConstraintDescription": "must be a valid EC2 instance type."
+        },
+        "KeyName": {
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+        },
+        "AdminPass": {
+            "Description": "Wordpress Admin Password",
+            "Type": "String",
+            "Default": "changeme2",
+            "ConstraintDescription": "Must be a password string."
+        },
+        "SSHLocation": {
+            "Description": " The IP address range that can be used to SSH to the EC2 instances",
+            "Type": "String",
+            "MinLength": "9",
+            "MaxLength": "18",
+            "Default": "0.0.0.0/0",
+            "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+            "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+        },
+        "Hostname": {
+            "Description": "Database Endpoint",
+            "Type": "String",
+            "Default": "localhost",
+            "ConstraintDescription": "Endpoint of the MYSQL DB"
+        },
+        "DBPort": {
+            "Description": "Database Endpoint Port",
+            "Type": "String",
+            "Default": "3306",
+            "ConstraintDescription": "Endpoint  port for MYSQL DB"
+        },
+        "DBName": {
+            "Default": "wordpressdb",
+            "Description": "The WordPress database name",
+            "Type": "String",
+            "MinLength": "1",
+            "MaxLength": "64",
+            "AllowedPattern": "[a-zA-Z][a-zA-Z0-9]*",
+            "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+        },
+        "DBUser": {
+            "NoEcho": "true",
+            "Description": "The WordPress database admin account user name",
+            "Type": "String",
+            "MinLength": "1",
+            "MaxLength": "16",
+            "AllowedPattern": "[a-zA-Z][a-zA-Z0-9]*",
+            "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+        },
+        "DBPassword": {
+            "NoEcho": "true",
+            "Description": "The WordPress database admin account password",
+            "Type": "String",
+            "MinLength": "8",
+            "MaxLength": "41",
+            "AllowedPattern": "[a-zA-Z0-9]*",
+            "ConstraintDescription": "must contain only alphanumeric characters."
+        }
+    },
+    "Mappings": {
+        "RegionMap": {
+            "us-east-1": {
+                "AMI": "ami-6869aa05"
+            },
+            "us-east-2": {
+                "AMI": "ami-c55673a0"
+            },
+            "us-west-1": {
+                "AMI": "ami-165a0876"
+            },
+            "us-west-2": {
+                "AMI": "ami-f173cc91"
+            }
+        }
+    },
+    "Resources": {
+        "VPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": "10.0.0.0/16",
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "76117064-e31a-4d8c-8e07-ccc4522e5300"
+                }
+            }
+        },
+        "Subnet": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "VPC"
+                },
+                "CidrBlock": "10.0.0.0/24",
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "77b2b0e2-461c-4027-b06b-6dae4beca01b"
+                }
+            }
+        },
+        "InternetGateway": {
+            "Type": "AWS::EC2::InternetGateway",
+            "Properties": {
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "b804c0fc-e1c7-4116-9afc-e229f49d5341"
+                }
+            }
+        },
+        "AttachGateway": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "VPC"
+                },
+                "InternetGatewayId": {
+                    "Ref": "InternetGateway"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "81d7f667-bd8a-4d8c-a502-f7d3cb62b7cd"
+                }
+            }
+        },
+        "RouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "VPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "75c6bf25-2678-404e-a486-4d9f9458c444"
+                }
+            }
+        },
+        "Route": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": "AttachGateway",
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "RouteTable"
+                },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "InternetGateway"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "5b5ecd5c-f1b8-4a9f-87dd-bba37c9ec66f"
+                }
+            }
+        },
+        "SubnetRouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "Subnet"
+                },
+                "RouteTableId": {
+                    "Ref": "RouteTable"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "b4564588-b902-42e2-a86b-a6de1a8cd5d8"
+                }
+            }
+        },
+        "NetworkAcl": {
+            "Type": "AWS::EC2::NetworkAcl",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "56137375-d2a0-4bc4-8369-ff6d652533f0"
+                }
+            }
+        },
+        "InboundHTTPNetworkAclEntry": {
+            "Type": "AWS::EC2::NetworkAclEntry",
+            "Properties": {
+                "NetworkAclId": {
+                    "Ref": "NetworkAcl"
+                },
+                "RuleNumber": "100",
+                "Protocol": "6",
+                "RuleAction": "allow",
+                "Egress": "false",
+                "CidrBlock": "0.0.0.0/0",
+                "PortRange": {
+                    "From": "80",
+                    "To": "80"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "0a5a4159-160a-4f8e-846e-f562306f2847"
+                }
+            }
+        },
+        "InboundSSHNetworkAclEntry": {
+            "Type": "AWS::EC2::NetworkAclEntry",
+            "Properties": {
+                "NetworkAclId": {
+                    "Ref": "NetworkAcl"
+                },
+                "RuleNumber": "101",
+                "Protocol": "6",
+                "RuleAction": "allow",
+                "Egress": "false",
+                "CidrBlock": "0.0.0.0/0",
+                "PortRange": {
+                    "From": "22",
+                    "To": "22"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "8c6a23d4-c1b9-4abf-9aad-9e91768845ca"
+                }
+            }
+        },
+        "InboundResponsePortsNetworkAclEntry": {
+            "Type": "AWS::EC2::NetworkAclEntry",
+            "Properties": {
+                "NetworkAclId": {
+                    "Ref": "NetworkAcl"
+                },
+                "RuleNumber": "102",
+                "Protocol": "6",
+                "RuleAction": "allow",
+                "Egress": "false",
+                "CidrBlock": "0.0.0.0/0",
+                "PortRange": {
+                    "From": "1024",
+                    "To": "65535"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "7a06651d-6349-430e-8d79-bcd849ee6a5d"
+                }
+            }
+        },
+        "OutBoundHTTPNetworkAclEntry": {
+            "Type": "AWS::EC2::NetworkAclEntry",
+            "Properties": {
+                "NetworkAclId": {
+                    "Ref": "NetworkAcl"
+                },
+                "RuleNumber": "100",
+                "Protocol": "6",
+                "RuleAction": "allow",
+                "Egress": "true",
+                "CidrBlock": "0.0.0.0/0",
+                "PortRange": {
+                    "From": "80",
+                    "To": "80"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "77b243ac-3213-407c-a4db-d96540d775c9"
+                }
+            }
+        },
+        "OutBoundHTTPSNetworkAclEntry": {
+            "Type": "AWS::EC2::NetworkAclEntry",
+            "Properties": {
+                "NetworkAclId": {
+                    "Ref": "NetworkAcl"
+                },
+                "RuleNumber": "101",
+                "Protocol": "6",
+                "RuleAction": "allow",
+                "Egress": "true",
+                "CidrBlock": "0.0.0.0/0",
+                "PortRange": {
+                    "From": "443",
+                    "To": "443"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "1b9eb46f-b51b-4243-bcb2-e6b6bef99cbe"
+                }
+            }
+        },
+        "OutBoundResponsePortsNetworkAclEntry": {
+            "Type": "AWS::EC2::NetworkAclEntry",
+            "Properties": {
+                "NetworkAclId": {
+                    "Ref": "NetworkAcl"
+                },
+                "RuleNumber": "102",
+                "Protocol": "6",
+                "RuleAction": "allow",
+                "Egress": "true",
+                "CidrBlock": "0.0.0.0/0",
+                "PortRange": {
+                    "From": "1024",
+                    "To": "65535"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "0026abe3-282b-4295-8f54-6fdf105ae480"
+                }
+            }
+        },
+        "SubnetNetworkAclAssociation": {
+            "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "Subnet"
+                },
+                "NetworkAclId": {
+                    "Ref": "NetworkAcl"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "f7fe6102-66bc-4cdf-b92c-bbfa4a9f5d78"
+                }
+            }
+        },
+        "IPAddress": {
+            "Type": "AWS::EC2::EIP",
+            "DependsOn": "AttachGateway",
+            "Properties": {
+                "Domain": "vpc",
+                "InstanceId": {
+                    "Ref": "WebServerInstance"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "582e11ae-83a4-4145-96e7-a4372a51afd5"
+                }
+            }
+        },
+        "WebServerSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable HTTP access via port 80 and SSH access",
+                "VpcId": {
+                    "Ref": "VPC"
+                },
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": {
+                            "Ref": "SSHLocation"
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "443",
+                        "ToPort": "443",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "d18c1abd-ef23-4f0c-9226-512e6f999d84"
+                }
+            }
+        },
+        "WebServerInstance": {
+            "Type": "AWS::EC2::Instance",
+            "DependsOn": "AttachGateway",
+            "Metadata": {
+                "AWS::CloudFormation::Init": {
+                    "configSets": {
+                        "wordpress_install": [
+                            "install_cfn",
+                            "install_chefdk",
+                            "install_chef",
+                            "install_wordpress",
+                            "run_chef"
+                        ]
+                    },
+                    "install_cfn": {
+                        "files": {
+                            "/etc/cfn/cfn-hup.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[main]\n",
+                                            "stack=",
+                                            {
+                                                "Ref": "AWS::StackId"
+                                            },
+                                            "\n",
+                                            "region=",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/etc/cfn/hooks.d/cfn-auto-reloader.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[cfn-auto-reloader-hook]\n",
+                                            "triggers=post.update\n",
+                                            "action=/opt/aws/bin/cfn-init -v ",
+                                            "         --stack ",
+                                            {
+                                                "Ref": "AWS::StackName"
+                                            },
+                                            "         --configsets wordpress_install ",
+                                            "         --region ",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "cfn-hup": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true",
+                                    "files": [
+                                        "/etc/cfn/cfn-hup.conf",
+                                        "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "install_chef": {
+                        "sources": {
+                            "/var/chef/chef-repo": "http://github.com/opscode/chef-repo/tarball/master"
+                        },
+                        "files": {
+                            "/tmp/install.sh": {
+                                "source": "https://www.opscode.com/chef/install.sh",
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/var/chef/chef-repo/.chef/knife.rb": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "cookbook_path [ '/var/chef/chef-repo/cookbooks' ]\n",
+                                            "node_path [ '/var/chef/chef-repo/nodes' ]\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/var/chef/chef-repo/.chef/client.rb": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "cookbook_path [ '/var/chef/chef-repo/cookbooks' ]\n",
+                                            "node_path [ '/var/chef/chef-repo/nodes' ]\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        },
+                        "commands": {
+                            "01_make_chef_readable": {
+                                "command": "chmod +rx /var/chef"
+                            },
+                            "02_install_chef": {
+                                "command": "bash /tmp/install.sh",
+                                "cwd": "/var/chef"
+                            },
+                            "03_create_node_list": {
+                                "command": "chef-client -z -c /var/chef/chef-repo/.chef/client.rb",
+                                "cwd": "/var/chef/chef-repo",
+                                "env": {
+                                    "HOME": "/var/chef"
+                                }
+                            }
+                        }
+                    },
+                    "install_chefdk": {
+                        "packages": {
+                            "rpm": {
+                                "chefdk": "https://opscode-omnibus-packages.s3.amazonaws.com/el/6/x86_64/chefdk-0.2.0-2.el6.x86_64.rpm"
+                            }
+                        }
+                    },
+                    "install_wordpress": {
+                        "files": {
+                            "/var/chef/chef-repo/.chef/knife.rb": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "cookbook_path [ '/var/chef/chef-repo/cookbooks/wordpress/berks-cookbooks' ]\n",
+                                            "node_path [ '/var/chef/chef-repo/nodes' ]\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/var/chef/chef-repo/.chef/client.rb": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "cookbook_path [ '/var/chef/chef-repo/cookbooks/wordpress/berks-cookbooks' ]\n",
+                                            "node_path [ '/var/chef/chef-repo/nodes' ]\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/var/chef/chef-repo/cookbooks/wordpress/attributes/default.rb": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "node['wordpress']['db']['pass'] = '",
+                                            {
+                                                "Ref": "DBPassword"
+                                            },
+                                            "'\n",
+                                            "node['wordpress']['db']['user'] = '",
+                                            {
+                                                "Ref": "DBUser"
+                                            },
+                                            "'\n",
+                                            "node['wordpress']['db']['host'] = '",
+                                            {
+                                                "Ref": "Hostname"
+                                            },
+                                            "'\n",
+                                            "node['wordpress']['db']['port'] = '",
+                                            {
+                                                "Ref": "DBPort"
+                                            },
+                                            "'\n",
+                                            "normal['wordpress']['db']['name'] = '",
+                                            {
+                                                "Ref": "DBName"
+                                            },
+                                            "'\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        },
+                        "commands": {
+                            "01_get_cookbook": {
+                                "command": "knife cookbook site download wordpress 2.3.0",
+                                "cwd": "/var/chef/chef-repo",
+                                "env": {
+                                    "HOME": "/var/chef"
+                                }
+                            },
+                            "02_unpack_cookbook": {
+                                "command": "tar xvfz /var/chef/chef-repo/wordpress*",
+                                "cwd": "/var/chef/chef-repo/cookbooks"
+                            },
+                            "03_init_berkshelf": {
+                                "command": "berks init /var/chef/chef-repo/cookbooks/wordpress --skip-vagrant --skip-git",
+                                "cwd": "/var/chef/chef-repo/cookbooks/wordpress",
+                                "env": {
+                                    "HOME": "/var/chef"
+                                }
+                            },
+                            "04_vendorize_berkshelf": {
+                                "command": "berks vendor",
+                                "cwd": "/var/chef/chef-repo/cookbooks/wordpress",
+                                "env": {
+                                    "HOME": "/var/chef"
+                                }
+                            },
+                            "05_configure_node_run_list": {
+                                "command": "knife node run_list add -z `knife node list -z` recipe[wordpress]",
+                                "cwd": "/var/chef/chef-repo",
+                                "env": {
+                                    "HOME": "/var/chef"
+                                }
+                            }
+                        }
+                    },
+                    "run_chef": {
+                        "commands": {
+                            "01_run_chef_client": {
+                                "command": "chef-client -z -c /var/chef/chef-repo/.chef/client.rb",
+                                "cwd": "/var/chef/chef-repo",
+                                "env": {
+                                    "HOME": "/var/chef"
+                                }
+                            }
+                        }
+                    }
+                },
+                "AWS::CloudFormation::Designer": {
+                    "id": "56d30ce6-c918-4614-aee3-8b1352e8d020"
+                }
+            },
+            "Properties": {
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "RegionMap",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        "AMI"
+                    ]
+                },
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": {
+                            "Ref": "AWS::StackName"
+                        }
+                    },
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ],
+                "NetworkInterfaces": [
+                    {
+                        "AssociatePublicIpAddress": "true",
+                        "DeviceIndex": "0",
+                        "GroupSet": [
+                            {
+                                "Ref": "WebServerSecurityGroup"
+                            }
+                        ],
+                        "SubnetId": {
+                            "Ref": "Subnet"
+                        }
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -xe\n",
+                                "yum install -y aws-cfn-bootstrap\n",
+                                "# Install the files and packages from the metadata\n",
+                                "/opt/aws/bin/cfn-init -v ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource WebServerInstance ",
+                                "         --configsets wordpress_install ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n",
+                                "/opt/aws/bin/cfn-signal -e $? ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource WebServerInstance ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n"
+                            ]
+                        ]
+                    }
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "WebsiteURL": {
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "http://",
+                        {
+                            "Fn::GetAtt": [
+                                "WebServerInstance",
+                                "PublicIp"
+                            ]
+                        },
+                        "/wordpress"
+                    ]
+                ]
+            },
+            "Description": "Newly created application URL"
+        }
+    },
+    "Metadata": {
+        "AWS::CloudFormation::Designer": {
+            "b804c0fc-e1c7-4116-9afc-e229f49d5341": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": -70,
+                    "y": 290
+                },
+                "z": 1,
+                "embeds": []
+            },
+            "76117064-e31a-4d8c-8e07-ccc4522e5300": {
+                "size": {
+                    "width": 690,
+                    "height": 360
+                },
+                "position": {
+                    "x": 60,
+                    "y": 90
+                },
+                "z": 1,
+                "embeds": [
+                    "d18c1abd-ef23-4f0c-9226-512e6f999d84",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "75c6bf25-2678-404e-a486-4d9f9458c444",
+                    "77b2b0e2-461c-4027-b06b-6dae4beca01b"
+                ]
+            },
+            "d18c1abd-ef23-4f0c-9226-512e6f999d84": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 270,
+                    "y": 110
+                },
+                "z": 2,
+                "parent": "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                "embeds": [],
+                "iscontainedinside": [
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300"
+                ]
+            },
+            "56137375-d2a0-4bc4-8369-ff6d652533f0": {
+                "size": {
+                    "width": 310,
+                    "height": 200
+                },
+                "position": {
+                    "x": 430,
+                    "y": 160
+                },
+                "z": 2,
+                "parent": "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                "embeds": [
+                    "0026abe3-282b-4295-8f54-6fdf105ae480",
+                    "1b9eb46f-b51b-4243-bcb2-e6b6bef99cbe",
+                    "77b243ac-3213-407c-a4db-d96540d775c9",
+                    "7a06651d-6349-430e-8d79-bcd849ee6a5d",
+                    "8c6a23d4-c1b9-4abf-9aad-9e91768845ca",
+                    "0a5a4159-160a-4f8e-846e-f562306f2847"
+                ],
+                "iscontainedinside": [
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300"
+                ]
+            },
+            "0026abe3-282b-4295-8f54-6fdf105ae480": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 460,
+                    "y": 190
+                },
+                "z": 3,
+                "parent": "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                "embeds": [],
+                "iscontainedinside": [
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0"
+                ]
+            },
+            "1b9eb46f-b51b-4243-bcb2-e6b6bef99cbe": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 560,
+                    "y": 190
+                },
+                "z": 3,
+                "parent": "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                "embeds": [],
+                "iscontainedinside": [
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0"
+                ]
+            },
+            "77b243ac-3213-407c-a4db-d96540d775c9": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 460,
+                    "y": 280
+                },
+                "z": 3,
+                "parent": "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                "embeds": [],
+                "iscontainedinside": [
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0"
+                ]
+            },
+            "7a06651d-6349-430e-8d79-bcd849ee6a5d": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 560,
+                    "y": 280
+                },
+                "z": 3,
+                "parent": "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                "embeds": [],
+                "iscontainedinside": [
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0"
+                ]
+            },
+            "8c6a23d4-c1b9-4abf-9aad-9e91768845ca": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 670,
+                    "y": 190
+                },
+                "z": 3,
+                "parent": "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                "embeds": [],
+                "iscontainedinside": [
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0"
+                ]
+            },
+            "0a5a4159-160a-4f8e-846e-f562306f2847": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 670,
+                    "y": 280
+                },
+                "z": 3,
+                "parent": "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                "embeds": [],
+                "iscontainedinside": [
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0",
+                    "56137375-d2a0-4bc4-8369-ff6d652533f0"
+                ]
+            },
+            "75c6bf25-2678-404e-a486-4d9f9458c444": {
+                "size": {
+                    "width": 120,
+                    "height": 140
+                },
+                "position": {
+                    "x": 280,
+                    "y": 280
+                },
+                "z": 2,
+                "parent": "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                "embeds": [
+                    "5b5ecd5c-f1b8-4a9f-87dd-bba37c9ec66f"
+                ],
+                "iscontainedinside": [
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300"
+                ]
+            },
+            "81d7f667-bd8a-4d8c-a502-f7d3cb62b7cd": {
+                "source": {
+                    "id": "76117064-e31a-4d8c-8e07-ccc4522e5300"
+                },
+                "target": {
+                    "id": "b804c0fc-e1c7-4116-9afc-e229f49d5341"
+                },
+                "z": 1
+            },
+            "5b5ecd5c-f1b8-4a9f-87dd-bba37c9ec66f": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 310,
+                    "y": 340
+                },
+                "z": 3,
+                "parent": "75c6bf25-2678-404e-a486-4d9f9458c444",
+                "embeds": [],
+                "isassociatedwith": [
+                    "b804c0fc-e1c7-4116-9afc-e229f49d5341"
+                ],
+                "iscontainedinside": [
+                    "75c6bf25-2678-404e-a486-4d9f9458c444",
+                    "75c6bf25-2678-404e-a486-4d9f9458c444",
+                    "75c6bf25-2678-404e-a486-4d9f9458c444",
+                    "75c6bf25-2678-404e-a486-4d9f9458c444",
+                    "75c6bf25-2678-404e-a486-4d9f9458c444"
+                ],
+                "dependson": [
+                    "81d7f667-bd8a-4d8c-a502-f7d3cb62b7cd"
+                ]
+            },
+            "77b2b0e2-461c-4027-b06b-6dae4beca01b": {
+                "size": {
+                    "width": 130,
+                    "height": 140
+                },
+                "position": {
+                    "x": 90,
+                    "y": 160
+                },
+                "z": 2,
+                "parent": "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                "embeds": [
+                    "56d30ce6-c918-4614-aee3-8b1352e8d020"
+                ],
+                "iscontainedinside": [
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300",
+                    "76117064-e31a-4d8c-8e07-ccc4522e5300"
+                ]
+            },
+            "56d30ce6-c918-4614-aee3-8b1352e8d020": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 120,
+                    "y": 220
+                },
+                "z": 3,
+                "parent": "77b2b0e2-461c-4027-b06b-6dae4beca01b",
+                "embeds": [],
+                "iscontainedinside": [
+                    "77b2b0e2-461c-4027-b06b-6dae4beca01b",
+                    "77b2b0e2-461c-4027-b06b-6dae4beca01b",
+                    "77b2b0e2-461c-4027-b06b-6dae4beca01b",
+                    "77b2b0e2-461c-4027-b06b-6dae4beca01b",
+                    "77b2b0e2-461c-4027-b06b-6dae4beca01b"
+                ],
+                "dependson": [
+                    "81d7f667-bd8a-4d8c-a502-f7d3cb62b7cd"
+                ]
+            },
+            "582e11ae-83a4-4145-96e7-a4372a51afd5": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": -20,
+                    "y": 90
+                },
+                "z": 1,
+                "embeds": [],
+                "isassociatedwith": [
+                    "56d30ce6-c918-4614-aee3-8b1352e8d020"
+                ],
+                "dependson": [
+                    "81d7f667-bd8a-4d8c-a502-f7d3cb62b7cd"
+                ]
+            },
+            "f7fe6102-66bc-4cdf-b92c-bbfa4a9f5d78": {
+                "source": {
+                    "id": "56137375-d2a0-4bc4-8369-ff6d652533f0"
+                },
+                "target": {
+                    "id": "77b2b0e2-461c-4027-b06b-6dae4beca01b"
+                },
+                "z": 2
+            },
+            "b4564588-b902-42e2-a86b-a6de1a8cd5d8": {
+                "source": {
+                    "id": "75c6bf25-2678-404e-a486-4d9f9458c444"
+                },
+                "target": {
+                    "id": "77b2b0e2-461c-4027-b06b-6dae4beca01b"
+                },
+                "z": 2
+            }
+        }
+    }
+}
